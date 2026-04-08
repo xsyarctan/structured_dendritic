@@ -1,0 +1,7 @@
+kind: tensorboard
+save_dir: ${hydra:runtime.output_dir}
+name: logs
+rich_model_summary: true
+rich_progress_bar: true
+checkpoint:
+  save_top_k: 1

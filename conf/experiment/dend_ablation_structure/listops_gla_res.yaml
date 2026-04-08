@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - override /task: classification
+  - override /data: listops
+  - override /model: gla_reservoir
+  - _self_
+
+run:
+  name: dend_structure_listops_gla_res
+

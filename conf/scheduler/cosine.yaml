@@ -1,0 +1,4 @@
+name: cosine
+warmup_steps: 1000
+total_steps: 0
+min_lr_ratio: 0.1

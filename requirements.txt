@@ -1,0 +1,3 @@
+-e .
+# Optional research acceleration for future attention variants:
+# flash-linear-attention>=0.2.5

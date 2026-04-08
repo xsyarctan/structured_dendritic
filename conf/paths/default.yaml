@@ -1,0 +1,2 @@
+data_root: ${oc.env:DATA_ROOT,./data}
+output_root: ${oc.env:OUTPUT_ROOT,./outputs}

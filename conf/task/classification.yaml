@@ -1,0 +1,8 @@
+name: classification
+decoder_mode: pool
+pooling: mean
+pair_mode: concat_abs_prod
+head_dropout: 0.0
+head_norm: false
+monitor_metric: val/accuracy
+monitor_mode: max

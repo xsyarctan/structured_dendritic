@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - override /task: classification
+  - override /data: listops
+  - override /model: conv1d_reservoir
+  - _self_
+
+run:
+  name: dend_structure_listops_conv1d_res
+

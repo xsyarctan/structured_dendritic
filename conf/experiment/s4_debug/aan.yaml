@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - override /task: classification
+  - override /data: aan
+  - override /model: s4d_standard_bidir
+  - _self_
+
+run:
+  name: s4_debug_aan
+

@@ -1,0 +1,8 @@
+name: language_modeling
+decoder_mode: sequence
+pooling: none
+head_dropout: 0.0
+embedding_dropout: 0.0
+output_norm: true
+monitor_metric: val/perplexity
+monitor_mode: min

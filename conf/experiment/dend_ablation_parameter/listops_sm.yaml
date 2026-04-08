@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - override /task: classification
+  - override /data: listops
+  - override /model: soma
+  - _self_
+
+run:
+  name: dend_param_listops_sm
+

@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - override /task: classification
+  - override /data: cifar
+  - override /model: ssm_reservoir
+  - _self_
+
+run:
+  name: liq_ssm_cifar_rs
+

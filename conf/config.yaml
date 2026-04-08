@@ -1,0 +1,23 @@
+defaults:
+  - paths: default
+  - task: classification
+  - data: listops
+  - model: ssm_reservoir
+  - optimizer: adamw
+  - scheduler: cosine
+  - trainer: default
+  - logging: tensorboard
+  - experiment: liq_ssm/listops_rs
+  - _self_
+
+run:
+  name: structured_dendrite
+  seed: 1111
+  resume_from: null
+  test_after_fit: true
+  test_only: false
+
+hydra:
+  run:
+    dir: ${paths.output_root}/${now:%Y-%m-%d}/${run.name}_${now:%H-%M-%S}
+
