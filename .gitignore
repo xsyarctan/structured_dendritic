@@ -40,7 +40,7 @@ wandb/
 *.npz
 
 # Local datasets and smoke-test fixtures
-data/
+/data/
 
 # Shell and cluster output
 nohup.out

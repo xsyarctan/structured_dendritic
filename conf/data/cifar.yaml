@@ -1,0 +1,38 @@
+task_name: classification
+input_kind: image_sequence
+num_classes: 10
+max_length: 1024
+train_max_length: null
+eval_max_length: null
+lm_stride: null
+train_lm_stride: null
+eval_lm_stride: null
+train_fraction: 1.0
+eval_fraction: 1.0
+max_train_examples: null
+max_eval_examples: null
+split_seed: 1111
+label_field: label
+loader:
+  batch_size: 16
+  eval_batch_size: 32
+  num_workers: 4
+splits:
+  train: train
+  validation: test
+  test: test
+source:
+  path: cifar10
+text:
+  primary_field: text
+  secondary_field: null
+image:
+  field: img
+  channels: 3
+tokenizer:
+  type: char
+  name_or_path: null
+  min_frequency: 1
+  lowercase: false
+  add_bos: false
+  add_eos: false

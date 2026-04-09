@@ -1,0 +1,43 @@
+task_name: classification
+input_kind: pair_text
+num_classes: 2
+max_length: 4096
+train_max_length: null
+eval_max_length: null
+lm_stride: null
+train_lm_stride: null
+eval_lm_stride: null
+train_fraction: 1.0
+eval_fraction: 1.0
+max_train_examples: null
+max_eval_examples: null
+split_seed: 1111
+label_field: label
+loader:
+  batch_size: 16
+  eval_batch_size: 32
+  num_workers: 4
+splits:
+  train: train
+  validation: validation
+  test: test
+source:
+  path: csv
+  data_files:
+    train: ${paths.data_root}/aan/train.tsv
+    validation: ${paths.data_root}/aan/val.tsv
+    test: ${paths.data_root}/aan/test.tsv
+  sep: "`t"
+text:
+  primary_field: text1
+  secondary_field: text2
+image:
+  field: image
+  channels: 1
+tokenizer:
+  type: wordpunct
+  name_or_path: null
+  min_frequency: 2
+  lowercase: true
+  add_bos: false
+  add_eos: true

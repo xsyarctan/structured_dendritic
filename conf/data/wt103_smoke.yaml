@@ -1,0 +1,39 @@
+task_name: language_modeling
+input_kind: language_model
+num_classes: null
+max_length: 128
+train_max_length: null
+eval_max_length: null
+lm_stride: 128
+train_lm_stride: null
+eval_lm_stride: null
+train_fraction: 1.0
+eval_fraction: 1.0
+max_train_examples: null
+max_eval_examples: null
+split_seed: 1111
+label_field: null
+loader:
+  batch_size: 1
+  eval_batch_size: 1
+  num_workers: 0
+splits:
+  train: train
+  validation: validation
+  test: test
+source:
+  path: Salesforce/wikitext
+  name: wikitext-103-raw-v1
+text:
+  primary_field: text
+  secondary_field: null
+image:
+  field: image
+  channels: 1
+tokenizer:
+  type: wordpunct
+  name_or_path: null
+  min_frequency: 2
+  lowercase: false
+  add_bos: false
+  add_eos: true

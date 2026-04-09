@@ -1,0 +1,43 @@
+task_name: language_modeling
+input_kind: language_model
+num_classes: null
+max_length: 32
+train_max_length: null
+eval_max_length: 8
+lm_stride: 32
+train_lm_stride: null
+eval_lm_stride: 8
+train_fraction: 1.0
+eval_fraction: 1.0
+max_train_examples: null
+max_eval_examples: null
+split_seed: 1111
+label_field: null
+loader:
+  batch_size: 1
+  eval_batch_size: 1
+  num_workers: 0
+splits:
+  train: train
+  validation: validation
+  test: test
+source:
+  path: text
+  data_files:
+    train: ${paths.data_root}/smoke_lm/train.txt
+    validation: ${paths.data_root}/smoke_lm/val.txt
+    test: ${paths.data_root}/smoke_lm/test.txt
+text:
+  primary_field: text
+  secondary_field: null
+image:
+  field: image
+  channels: 1
+tokenizer:
+  type: wordpunct
+  name_or_path: null
+  min_frequency: 1
+  lowercase: false
+  add_bos: false
+  add_eos: true
+
