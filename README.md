@@ -13,7 +13,8 @@ Instead of keeping one near-duplicate model file per variant, the code uses one 
 - `identity`: soma-only ablation.
 - `s4d`: structured state-space dendrite used inside the spiking dendrite+soma block.
 - `conv1d`: temporal convolution dendrite.
-- `gla`: gated linear attention dendrite.
+- gla: gated linear attention dendrite.
+- pointwise_mlp: static per-token control with no temporal mixing.
 - `s4d_standard`: a non-spiking debug baseline meant to be closer to a standard S4D block for reproduction checks.
 
 The default spiking block is:
@@ -101,7 +102,7 @@ Typical usage:
 
 ```powershell
 python train.py experiment=liq_ssm/listops_rs trainer.devices=[0]
-python train.py experiment=dend_ablation_parameter/listops_bd trainer.devices=[0,1]
+python train.py experiment=appendix/listops_ssm_upper_bound trainer.devices=[0,1]
 python train.py experiment=liq_ssm/wt103 trainer.devices=[0]
 python train.py experiment=s4_debug/listops trainer.devices=[0]
 ```
@@ -166,7 +167,12 @@ Common fields:
 - `task_name`: semantic label for the task. Currently `classification` or `language_modeling`.
 - `input_kind`: which data path to use. Choices here are `text`, `pair_text`, `image_sequence`, and `language_model`.
 - `num_classes`: number of target classes for classification tasks.
-- `max_length`: max token length for classification, or LM block size for language modeling.
+- `max_length`: default token length for classification, or LM block size for language modeling.
+- `train_max_length`: optional train-only token/block length override.
+- `eval_max_length`: optional validation/test token/block length override.
+- `train_fraction`: optional train split subsampling ratio for low-data studies.
+- `max_train_examples`: optional cap on train examples after shuffling.
+- `max_eval_examples`: optional cap on validation/test examples for smoke runs.
 - `lm_stride`: stride used when chopping LM text into blocks. `null` means not used.
 - `label_field`: dataset column containing labels.
 - `loader.batch_size`: training batch size.
@@ -224,14 +230,21 @@ Common top-level fields:
 
 `model.dendrite.*` fields:
 
-- `kind`: dendrite family. `identity`, `s4d`, `conv1d`, `gla`, or `s4d_standard`.
-- `direction`: `causal` or `bidir`. Bidirectional runs both forward and reverse processing and combines them.
-- `freeze_dynamics`: mainly meaningful for S4D. If true, the continuous-time dynamics stay fixed and only the readout-like parts train.
-- `freeze_processor`: meaningful for Conv1D and GLA. If true, the main processor weights are frozen.
+- `kind`: dendrite family. `identity`, `pointwise_mlp`, `s4d`, `conv1d`, `gla`, or `s4d_standard`.
+- `direction`: `causal` or `bidir`. Bidirectional runs both forward and reverse processing and combines them. In this repo the bidirectional path should be treated as an optional noncausal upper bound rather than the main biologically motivated setting.
+- `freeze_all`: freezes all dendritic parameters after initialization. This is the main setting for the reservoir/fixed-dendrite ablation.
+- `freeze_dynamics`: mainly meaningful for S4D. If true, the continuous-time dynamics stay fixed while other dendritic parameters may still train.
+- `freeze_processor`: freezes the main processor weights for Conv1D, GLA, pointwise controls, or the SSM readout-like terms.
+- `freeze_skip`: freezes additive skip/input-scale parameters inside the dendrite.
+- `freeze_processor`: especially relevant for Conv1D, GLA, pointwise controls, and the S4D readout-like processor terms.
 - `d_state`: S4D state size.
 - `dt_min`, `dt_max`: S4D initialization range for discretization timescales.
 - `input_scale_init`: initialization for the additive skip/input-scale parameter.
 - `kernel_size`: Conv1D kernel size.
+- `use_branch_mixer`: whether Conv1D adds an optional 1x1 branch-mixing stage after depthwise causal filtering.
+- `branch_mixer_groups`: grouping for the optional 1x1 branch mixer.
+- `mlp_hidden_multiplier`: hidden width multiplier for the pointwise MLP control.
+- `gla_gate_normalizer`: gate normalization constant used by the official-style GLA parameterization.
 - `groups`: Conv1D grouping. `-1` means depthwise by setting groups to `d_model`.
 - `bias`: Conv1D bias flag.
 - `n_heads`: GLA attention head count.
@@ -249,10 +262,10 @@ If a value is `null`, the global optimizer setting is used instead.
 Model files in this repo:
 
 - `soma.yaml`: dendrite identity ablation. Useful to isolate the soma/spike mechanism.
-- `ssm_reservoir.yaml`: S4D dendrite with frozen dynamics. This is the reservoir-style variant.
+- `ssm_reservoir.yaml`: S4D dendrite with all dendritic parameters frozen after initialization. This is the main fixed-dendrite / reservoir ablation.
 - `ssm_causal.yaml`: trainable causal S4D dendrite.
-- `ssm_bidir.yaml`: trainable bidirectional S4D dendrite.
-- `conv1d_*`: Conv1D dendrite variants.
+- `ssm_bidir.yaml`: trainable bidirectional S4D dendrite used as an optional noncausal upper bound.
+- `conv1d_*`: Conv1D dendrite variants with depthwise causal filtering and an optional 1x1 branch mixer.
 - `gla_*`: GLA dendrite variants.
 - `s4d_standard_bidir.yaml`: non-spiking S4D baseline for LRA-style tasks.
 - `s4d_standard_causal.yaml`: non-spiking S4D baseline for LM/WT103-style tasks.
@@ -264,8 +277,11 @@ These files are intentionally thin. Their main job is to select a coherent `task
 Current folders:
 
 - `liq_ssm/`: main spiking SSM runs across tasks.
-- `dend_ablation_parameter/`: compares soma-only, reservoir SSM, causal SSM, and bidirectional SSM while keeping structure similar.
-- `dend_ablation_structure/`: compares soma, SSM, Conv1D, and GLA structures.
+- `dend_ablation_parameter/`: main complexity story comparing soma-only, fully frozen SSM dendrites, and trainable causal SSM dendrites.
+- dend_ablation_structure/: compares soma, SSM, Conv1D, and GLA structures.
+- eviewer_controls/: static pointwise controls that test whether gains come from temporal structure rather than extra preprocessing.
+- eviewer_claims/: low-data, short-budget, and length-generalization presets for stronger inductive-bias checks.
+- ppendix/: optional noncausal upper-bound runs such as bidirectional SSM.
 - `s4_debug/`: standard non-spiking S4D baselines for sanity-checking the full training setup against the official S4 family.
 
 Typical pattern inside an experiment file:
@@ -420,6 +436,9 @@ The project currently depends on:
 - `einops`
 - `torchmetrics`
 - optional `flash-linear-attention`
+
+
+
 
 
 

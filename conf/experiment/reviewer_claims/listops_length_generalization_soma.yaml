@@ -7,4 +7,8 @@ defaults:
   - _self_
 
 run:
-  name: dend_param_listops_sm
+  name: reviewer_length_generalization_listops_soma
+
+data:
+  max_length: 1024
+  eval_max_length: 2048

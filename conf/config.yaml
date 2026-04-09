@@ -7,8 +7,8 @@ defaults:
   - scheduler: cosine
   - trainer: default
   - logging: tensorboard
-  - experiment: liq_ssm/listops_rs
   - _self_
+  - experiment: liq_ssm/listops_rs
 
 run:
   name: structured_dendrite
@@ -20,4 +20,5 @@ run:
 hydra:
   run:
     dir: ${paths.output_root}/${now:%Y-%m-%d}/${run.name}_${now:%H-%M-%S}
+
 

@@ -3,8 +3,8 @@
 defaults:
   - override /task: classification
   - override /data: listops
-  - override /model: ssm_causal
+  - override /model: pointwise_control
   - _self_
 
 run:
-  name: dend_param_listops_causal
+  name: reviewer_pointwise_control_listops

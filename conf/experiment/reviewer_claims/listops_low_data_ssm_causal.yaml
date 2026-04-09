@@ -7,4 +7,7 @@ defaults:
   - _self_
 
 run:
-  name: dend_param_listops_causal
+  name: reviewer_low_data_listops_causal
+
+data:
+  train_fraction: 0.1

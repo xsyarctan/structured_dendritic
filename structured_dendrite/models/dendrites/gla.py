@@ -5,12 +5,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
+from structured_dendrite.models.dendrites.base import cfg_value
 from structured_dendrite.models.dendrites.optim import build_optim_settings, mark_module_optim, mark_parameter_optim
+
+try:
+    from fla.ops.gla import fused_chunk_gla, fused_recurrent_gla
+except ImportError:
+    fused_chunk_gla = None
+    fused_recurrent_gla = None
 
 
 class _SingleDirectionGLA(nn.Module):
-    def __init__(self, d_model: int, n_heads: int) -> None:
+    def __init__(self, d_model: int, cfg) -> None:
         super().__init__()
+        n_heads = int(cfg.n_heads)
         if d_model % n_heads != 0 or (d_model // 2) % n_heads != 0:
             raise ValueError("d_model and d_model//2 must be divisible by n_heads")
 
@@ -19,6 +27,7 @@ class _SingleDirectionGLA(nn.Module):
         self.value_head_dim = d_model // n_heads
         self.key_head_dim = (d_model // 2) // n_heads
         self.scaling = self.key_head_dim ** -0.5
+        self.gate_normalizer = float(cfg_value(cfg, "gla_gate_normalizer", 16.0))
 
         self.q_proj = nn.Linear(d_model, d_model // 2, bias=False)
         self.k_proj = nn.Linear(d_model, d_model // 2, bias=False)
@@ -30,6 +39,14 @@ class _SingleDirectionGLA(nn.Module):
         self.g_proj = nn.Linear(d_model, d_model, bias=True)
         self.out_proj = nn.Linear(d_model, d_model, bias=False)
         self.group_norm = nn.LayerNorm(self.value_head_dim, eps=1e-5, elementwise_affine=False)
+
+        self._post_init()
+
+    def _post_init(self) -> None:
+        nn.init.xavier_uniform_(self.q_proj.weight, gain=2 ** -2.5)
+        nn.init.xavier_uniform_(self.k_proj.weight, gain=2 ** -2.5)
+        nn.init.xavier_uniform_(self.k_gate[0].weight, gain=2 ** -2.5)
+        nn.init.xavier_uniform_(self.k_gate[1].weight, gain=2 ** -2.5)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         queries = self.q_proj(inputs)
@@ -52,33 +69,61 @@ class _SingleDirectionGLA(nn.Module):
         keys = rearrange(keys, "b l (h d) -> b h l d", h=self.n_heads)
         values = rearrange(values, "b l (h d) -> b h l d", h=self.n_heads)
         key_gate = rearrange(key_gate, "b l (h d) -> b h l d", h=self.n_heads)
+        log_gate = F.logsigmoid(key_gate) / self.gate_normalizer
 
-        gate = torch.exp(F.logsigmoid(key_gate).mean(dim=-1, keepdim=True) / 16.0)
-        prefix_gate = torch.cumprod(gate + 1e-6, dim=2)
+        if fused_chunk_gla is not None and queries.is_cuda:
+            if self.training:
+                outputs, _ = fused_chunk_gla(queries, keys, values, log_gate, initial_state=None, output_final_state=True)
+            else:
+                outputs, _ = fused_recurrent_gla(queries, keys, values, log_gate, initial_state=None, output_final_state=True)
+        else:
+            outputs = self._recurrent_fallback(queries, keys, values, log_gate)
 
-        kv = torch.einsum("bhld,bhle->bhlde", keys, values)
-        kv_scaled = kv / prefix_gate.unsqueeze(-1)
-        state = torch.cumsum(kv_scaled, dim=2) * prefix_gate.unsqueeze(-1)
-        outputs = torch.einsum("bhld,bhlde->bhle", queries, state)
         outputs = self.group_norm(outputs)
         return rearrange(outputs, "b h l d -> b l (h d)")
 
+    def _recurrent_fallback(
+        self,
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        log_gate: torch.Tensor,
+    ) -> torch.Tensor:
+        batch_size, n_heads, sequence_length, key_dim = queries.shape
+        value_dim = values.shape[-1]
+        state = queries.new_zeros((batch_size, n_heads, key_dim, value_dim))
+        outputs = []
+        gates = log_gate.exp().unsqueeze(-1)
+
+        for step in range(sequence_length):
+            state = state * gates[:, :, step] + torch.einsum("bhd,bhe->bhde", keys[:, :, step], values[:, :, step])
+            outputs.append(torch.einsum("bhd,bhde->bhe", queries[:, :, step], state))
+
+        return torch.stack(outputs, dim=2)
+
 
 class GLADendrite(nn.Module):
+    output_ready = False
+
     def __init__(self, d_model: int, cfg) -> None:
         super().__init__()
-        self.output_ready = False
         self.direction = cfg.direction
-        self.input_scale = nn.Parameter(torch.ones(d_model) * float(cfg.input_scale_init))
-        self.forward_gla = _SingleDirectionGLA(d_model=d_model, n_heads=int(cfg.n_heads))
-        self.backward_gla = _SingleDirectionGLA(d_model=d_model, n_heads=int(cfg.n_heads)) if cfg.direction == "bidir" else None
+        freeze_all = bool(cfg_value(cfg, "freeze_all", False))
+        freeze_processor = freeze_all or bool(cfg_value(cfg, "freeze_processor", False))
+        freeze_skip = freeze_all or bool(cfg_value(cfg, "freeze_skip", False))
 
-        if bool(cfg.freeze_processor):
-            for parameter in self.forward_gla.parameters():
-                parameter.requires_grad = False
-            if self.backward_gla is not None:
-                for parameter in self.backward_gla.parameters():
+        self.input_scale = nn.Parameter(torch.ones(d_model) * float(cfg_value(cfg, "input_scale_init", 1.0)))
+        self.forward_gla = _SingleDirectionGLA(d_model=d_model, cfg=cfg)
+        self.backward_gla = _SingleDirectionGLA(d_model=d_model, cfg=cfg) if cfg.direction == "bidir" else None
+
+        if freeze_processor:
+            for module in [self.forward_gla, self.backward_gla]:
+                if module is None:
+                    continue
+                for parameter in module.parameters():
                     parameter.requires_grad = False
+        if freeze_skip:
+            self.input_scale.requires_grad = False
 
         processor_optim = build_optim_settings(cfg, "processor")
         skip_optim = build_optim_settings(cfg, "skip")

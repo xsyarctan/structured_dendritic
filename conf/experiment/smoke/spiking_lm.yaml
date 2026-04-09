@@ -1,0 +1,13 @@
+# @package _global_
+
+defaults:
+  - override /task: language_modeling
+  - override /data: smoke_lm
+  - override /model: ssm_causal
+  - _self_
+
+run:
+  name: smoke_spiking_lm
+model:
+  d_model: 64
+  n_layers: 2

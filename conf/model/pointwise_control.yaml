@@ -2,11 +2,11 @@ d_model: 256
 n_layers: 8
 dropout: 0.1
 prenorm: true
-final_norm: false
+final_norm: true
 max_positions: 8192
 tie_embeddings: true
 block:
-  mode: residual
+  mode: spiking
 soma:
   threshold: 0.5
   truncation_steps: 4
@@ -14,7 +14,7 @@ soma:
     lr: 0.001
     weight_decay: 0.0
 dendrite:
-  kind: s4d_standard
+  kind: pointwise_mlp
   direction: causal
   freeze_all: false
   freeze_dynamics: false
@@ -34,8 +34,8 @@ dendrite:
   mlp_hidden_multiplier: 2.0
   gla_gate_normalizer: 16.0
   optim:
-    dynamics_lr: 0.001
-    dynamics_weight_decay: 0.0
+    dynamics_lr: null
+    dynamics_weight_decay: null
     processor_lr: null
     processor_weight_decay: null
     skip_lr: null

@@ -5,6 +5,7 @@ import math
 import torch
 import torch.nn as nn
 
+from structured_dendrite.models.dendrites.base import cfg_value
 from structured_dendrite.models.dendrites.optim import build_optim_settings, mark_module_optim, mark_parameter_optim
 
 
@@ -17,28 +18,27 @@ class DiagonalSSMKernel(nn.Module):
         super().__init__()
         directions = 2 if cfg.direction == "bidir" else 1
         d_state = int(cfg.d_state)
+        freeze_all = bool(cfg_value(cfg, "freeze_all", False))
+        freeze_dynamics = freeze_all or bool(cfg_value(cfg, "freeze_dynamics", False))
+        freeze_processor = freeze_all or bool(cfg_value(cfg, "freeze_processor", False))
 
         log_dt = torch.rand(d_model) * (math.log(float(cfg.dt_max)) - math.log(float(cfg.dt_min))) + math.log(float(cfg.dt_min))
         log_a_real = torch.log(0.5 * torch.ones(d_model, d_state // 2))
         a_imag = math.pi * _repeat_rows(torch.arange(d_state // 2), d_model)
         coeffs = torch.randn(directions, d_model, d_state // 2, dtype=torch.cfloat)
 
-        train_dynamics = not bool(cfg.freeze_dynamics)
-        self._register_tensor("log_dt", log_dt, trainable=train_dynamics)
-        self._register_tensor("log_a_real", log_a_real, trainable=train_dynamics)
-        self._register_tensor("a_imag", a_imag, trainable=train_dynamics)
-        self.coeffs = nn.Parameter(torch.view_as_real(coeffs))
-
         dynamics_optim = build_optim_settings(cfg, "dynamics")
         processor_optim = build_optim_settings(cfg, "processor")
-        mark_parameter_optim(getattr(self, "log_dt", None), dynamics_optim)
-        mark_parameter_optim(getattr(self, "log_a_real", None), dynamics_optim)
-        mark_parameter_optim(getattr(self, "a_imag", None), dynamics_optim)
-        mark_parameter_optim(self.coeffs, processor_optim)
+        self._register_tensor("log_dt", log_dt, trainable=not freeze_dynamics, optim_settings=dynamics_optim)
+        self._register_tensor("log_a_real", log_a_real, trainable=not freeze_dynamics, optim_settings=dynamics_optim)
+        self._register_tensor("a_imag", a_imag, trainable=not freeze_dynamics, optim_settings=dynamics_optim)
+        self._register_tensor("coeffs", torch.view_as_real(coeffs), trainable=not freeze_processor, optim_settings=processor_optim)
 
-    def _register_tensor(self, name: str, value: torch.Tensor, trainable: bool) -> None:
+    def _register_tensor(self, name: str, value: torch.Tensor, trainable: bool, optim_settings: dict[str, float] | None) -> None:
         if trainable:
-            self.register_parameter(name, nn.Parameter(value))
+            parameter = nn.Parameter(value)
+            self.register_parameter(name, parameter)
+            mark_parameter_optim(parameter, optim_settings)
         else:
             self.register_buffer(name, value)
 
@@ -55,12 +55,19 @@ class DiagonalSSMKernel(nn.Module):
 
 
 class S4DDendrite(nn.Module):
+    output_ready = False
+
     def __init__(self, d_model: int, cfg) -> None:
         super().__init__()
-        self.output_ready = False
         self.direction = cfg.direction
+        freeze_all = bool(cfg_value(cfg, "freeze_all", False))
+        freeze_skip = freeze_all or bool(cfg_value(cfg, "freeze_skip", False))
+
         self.kernel = DiagonalSSMKernel(d_model=d_model, cfg=cfg)
-        self.input_scale = nn.Parameter(torch.ones(d_model) * float(cfg.input_scale_init))
+        self.input_scale = nn.Parameter(torch.ones(d_model) * float(cfg_value(cfg, "input_scale_init", 1.0)))
+        if freeze_skip:
+            self.input_scale.requires_grad = False
+
         skip_optim = build_optim_settings(cfg, "skip")
         mark_parameter_optim(self.input_scale, skip_optim)
 
@@ -86,10 +93,15 @@ class S4DDendrite(nn.Module):
 
 
 class StandardS4DDendrite(nn.Module):
+    output_ready = True
+
     def __init__(self, d_model: int, cfg, dropout: float) -> None:
         super().__init__()
-        self.output_ready = True
         self.direction = cfg.direction
+        freeze_all = bool(cfg_value(cfg, "freeze_all", False))
+        freeze_processor = freeze_all or bool(cfg_value(cfg, "freeze_processor", False))
+        freeze_skip = freeze_all or bool(cfg_value(cfg, "freeze_skip", False))
+
         self.kernel = DiagonalSSMKernel(d_model=d_model, cfg=cfg)
         self.D = nn.Parameter(torch.ones(d_model))
         self.activation = nn.GELU()
@@ -98,6 +110,12 @@ class StandardS4DDendrite(nn.Module):
             nn.Conv1d(d_model, d_model * 2, kernel_size=1),
             nn.GLU(dim=-2),
         )
+
+        if freeze_processor:
+            for parameter in self.output_linear.parameters():
+                parameter.requires_grad = False
+        if freeze_skip:
+            self.D.requires_grad = False
 
         skip_optim = build_optim_settings(cfg, "skip")
         processor_optim = build_optim_settings(cfg, "processor")

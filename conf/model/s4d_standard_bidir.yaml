@@ -1,6 +1,6 @@
 d_model: 256
-n_layers: 6
-dropout: 0.0
+n_layers: 8
+dropout: 0.1
 prenorm: true
 final_norm: false
 max_positions: 8192
@@ -10,11 +10,16 @@ block:
 soma:
   threshold: 0.5
   truncation_steps: 4
+  optim:
+    lr: 0.001
+    weight_decay: 0.0
 dendrite:
   kind: s4d_standard
   direction: bidir
+  freeze_all: false
   freeze_dynamics: false
   freeze_processor: false
+  freeze_skip: false
   d_state: 64
   dt_min: 0.001
   dt_max: 0.1
@@ -23,6 +28,11 @@ dendrite:
   groups: -1
   bias: true
   n_heads: 4
+  use_branch_mixer: true
+  branch_mixer_groups: 1
+  mixer_bias: true
+  mlp_hidden_multiplier: 2.0
+  gla_gate_normalizer: 16.0
   optim:
     dynamics_lr: 0.001
     dynamics_weight_decay: 0.0
@@ -30,6 +40,3 @@ dendrite:
     processor_weight_decay: null
     skip_lr: null
     skip_weight_decay: null
-
-
-
