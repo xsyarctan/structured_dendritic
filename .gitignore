@@ -42,6 +42,9 @@ wandb/
 # Local datasets and smoke-test fixtures
 /data/
 
+# latex project for codex only
+/latex_files/
+
 # Shell and cluster output
 nohup.out
 slurm-*.out
