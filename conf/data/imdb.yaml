@@ -23,6 +23,8 @@ splits:
   test: test
 source:
   path: imdb
+  cache_dir: ${paths.data_root}/imdb/hf_cache
+  local_data_dir: ${paths.data_root}/imdb
 text:
   primary_field: text
   secondary_field: null

@@ -8,11 +8,15 @@ from typing import Any
 
 import lightning as L
 import torch
-from datasets import Dataset, DatasetDict, load_dataset
+from datasets import Dataset, DatasetDict, Image as HFImage, load_dataset
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader, Dataset as TorchDataset
+from torchvision.transforms.functional import pil_to_tensor
 
 from structured_dendrite.data.tokenization import build_tokenizer
+
+
+PATHFINDER_BLACKLIST = {"pathfinder32/curv_baseline/imgs/0/sample_172.png"}
 
 
 def cfg_value(cfg, key: str, default):
@@ -44,6 +48,26 @@ def _normalize_delimiter(delimiter: Any) -> str:
     if "\t" in delimiter or "\\t" in normalized or "`t" in normalized:
         return "\t"
     raise ValueError(f"Unsupported delimiter specification: {delimiter!r}")
+
+
+def _numeric_sort_key(path: Path):
+    try:
+        return int(path.stem)
+    except ValueError:
+        return path.stem
+
+
+def _resolve_pathfinder_root(data_dir: str | Path, resolution: int | None) -> Path:
+    root = Path(data_dir).expanduser()
+    if resolution is not None:
+        candidate = root / f"pathfinder{int(resolution)}"
+        if candidate.is_dir():
+            return candidate
+        if root.name == f"pathfinder{int(resolution)}" and root.is_dir():
+            return root
+    if root.is_dir() and any((root / level).is_dir() for level in ["curv_baseline", "curv_contour_length_9", "curv_contour_length_14"]):
+        return root
+    raise FileNotFoundError(f"Could not find a Pathfinder directory under {root}")
 
 
 @dataclass
@@ -138,18 +162,63 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
         path = source_cfg.pop("path")
 
         if path == "csv" and "data_files" in source_cfg:
-            delimiter = _normalize_delimiter(source_cfg.get("sep", ","))
-            return self._load_local_tabular_dataset(source_cfg["data_files"], delimiter)
+            delimiter = _normalize_delimiter(source_cfg.pop("sep", ","))
+            column_names = source_cfg.pop("column_names", None)
+            skip_header = bool(source_cfg.pop("skip_header", False))
+            return self._load_local_tabular_dataset(
+                source_cfg["data_files"],
+                delimiter,
+                column_names=column_names,
+                skip_header=skip_header,
+            )
         if path == "text" and "data_files" in source_cfg:
             return self._load_local_text_dataset(source_cfg["data_files"])
+        if path == "imdb":
+            local_data_dir = source_cfg.pop("local_data_dir", None)
+            if local_data_dir is not None:
+                local_root = Path(local_data_dir).expanduser()
+                acl_root = local_root / "aclImdb" if (local_root / "aclImdb").is_dir() else local_root
+                if (acl_root / "train" / "pos").is_dir():
+                    return self._load_local_acl_imdb_dataset(local_data_dir, RuntimeError("Using local IMDB fallback"))
+            try:
+                return load_dataset(path, **source_cfg)
+            except Exception as error:
+                if local_data_dir is None:
+                    raise
+                return self._load_local_acl_imdb_dataset(local_data_dir, error)
+        if path == "pathfinder_metadata":
+            return self._load_pathfinder_metadata_dataset(source_cfg)
         return load_dataset(path, **source_cfg)
 
-    def _load_local_tabular_dataset(self, data_files: dict[str, str], delimiter: str) -> DatasetDict:
+    def _load_local_tabular_dataset(
+        self,
+        data_files: dict[str, str],
+        delimiter: str,
+        column_names: list[str] | tuple[str, ...] | None = None,
+        skip_header: bool = False,
+    ) -> DatasetDict:
+        csv.field_size_limit(1_000_000_000)
         splits = {}
+        normalized_column_names = list(column_names) if column_names is not None else None
         for split_name, file_path in data_files.items():
             with Path(file_path).open("r", encoding="utf-8", newline="") as handle:
-                reader = csv.DictReader(handle, delimiter=delimiter)
-                splits[split_name] = Dataset.from_list(list(reader))
+                if normalized_column_names is None:
+                    reader = csv.DictReader(handle, delimiter=delimiter)
+                    rows = list(reader)
+                else:
+                    reader = csv.reader(handle, delimiter=delimiter)
+                    if skip_header:
+                        next(reader, None)
+                    rows = []
+                    for row in reader:
+                        if not row:
+                            continue
+                        if len(row) != len(normalized_column_names):
+                            raise ValueError(
+                                f"Expected {len(normalized_column_names)} columns in {file_path}, found {len(row)}"
+                            )
+                        rows.append(dict(zip(normalized_column_names, row, strict=True)))
+                splits[split_name] = Dataset.from_list(rows)
         return DatasetDict(splits)
 
     def _load_local_text_dataset(self, data_files: dict[str, str]) -> DatasetDict:
@@ -159,6 +228,75 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
                 rows = [line.rstrip("\n") for line in handle if line.strip()]
             splits[split_name] = Dataset.from_dict({"text": rows})
         return DatasetDict(splits)
+
+    def _load_local_acl_imdb_dataset(self, data_dir: str | Path, original_error: Exception) -> DatasetDict:
+        root = Path(data_dir).expanduser()
+        acl_root = root / "aclImdb" if (root / "aclImdb").is_dir() else root
+        expected = acl_root / "train" / "pos"
+        if not expected.is_dir():
+            raise original_error
+
+        splits = {}
+        for split_name in ["train", "test"]:
+            rows = []
+            for label_name, label in [("neg", 0), ("pos", 1)]:
+                for file_path in sorted((acl_root / split_name / label_name).glob("*.txt")):
+                    text = file_path.read_text(encoding="utf-8").replace("<br />", " ").strip()
+                    rows.append({"text": text, "label": label})
+            splits[split_name] = Dataset.from_list(rows)
+        return DatasetDict(splits)
+
+    def _load_pathfinder_metadata_dataset(self, source_cfg: dict[str, Any]) -> DatasetDict:
+        root = _resolve_pathfinder_root(source_cfg["data_dir"], source_cfg.get("resolution"))
+        difficulty_levels = source_cfg.get("difficulty_levels") or ["curv_contour_length_14"]
+        val_split = float(source_cfg.get("val_split", 0.1))
+        test_split = float(source_cfg.get("test_split", 0.1))
+        seed = int(source_cfg.get("seed", cfg_value(self.cfg, "split_seed", 1111)))
+
+        if val_split < 0 or test_split < 0 or val_split + test_split >= 1.0:
+            raise ValueError("Pathfinder val/test splits must be non-negative and sum to less than 1")
+
+        samples: list[dict[str, Any]] = []
+        for difficulty in difficulty_levels:
+            metadata_dir = root / difficulty / "metadata"
+            if not metadata_dir.is_dir():
+                raise FileNotFoundError(f"Pathfinder metadata directory not found: {metadata_dir}")
+            metadata_files = sorted(metadata_dir.glob("*.npy"), key=_numeric_sort_key)
+            if not metadata_files:
+                raise FileNotFoundError(f"No Pathfinder metadata files found in {metadata_dir}")
+            for metadata_file in metadata_files:
+                with metadata_file.open("r", encoding="utf-8") as handle:
+                    for line in handle:
+                        parts = line.split()
+                        if len(parts) < 4:
+                            continue
+                        image_rel = Path(difficulty) / parts[0] / parts[1]
+                        blacklist_key = f"{root.name}/{image_rel.as_posix()}"
+                        if blacklist_key in PATHFINDER_BLACKLIST:
+                            continue
+                        image_path = root / image_rel
+                        samples.append({"image": str(image_path), "label": int(parts[3])})
+
+        if not samples:
+            raise FileNotFoundError(f"No Pathfinder samples found under {root}")
+
+        dataset = Dataset.from_list(samples).cast_column("image", HFImage())
+        total = len(dataset)
+        val_size = int(total * val_split)
+        test_size = int(total * test_split)
+        train_size = total - val_size - test_size
+        permutation = torch.randperm(total, generator=torch.Generator().manual_seed(seed)).tolist()
+
+        train_indices = permutation[:train_size]
+        val_indices = permutation[train_size : train_size + val_size]
+        test_indices = permutation[train_size + val_size :]
+        return DatasetDict(
+            {
+                "train": dataset.select(train_indices),
+                "validation": dataset.select(val_indices),
+                "test": dataset.select(test_indices),
+            }
+        )
 
     def _setup_tokenized_datasets(self, raw_dataset) -> None:
         train_split = self._maybe_limit_split(raw_dataset[self.cfg.splits.train], stage_name="train")
@@ -224,7 +362,7 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
         max_length = self._split_max_length(split_name)
         examples: list[dict[str, Any]] = []
         for row in split:
-            label = int(row[self.cfg.label_field])
+            label = int(float(row[self.cfg.label_field]))
             if self.cfg.input_kind == "text":
                 examples.append(
                     {
@@ -304,7 +442,9 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
     def _image_to_sequence(self, image) -> torch.Tensor:
         if hasattr(image, "convert"):
             image = image.convert("RGB" if self.cfg.image.channels == 3 else "L")
-        tensor = image if torch.is_tensor(image) else torch.tensor(image)
+            tensor = pil_to_tensor(image)
+        else:
+            tensor = image if torch.is_tensor(image) else torch.tensor(image)
         if tensor.ndim == 2:
             tensor = tensor.unsqueeze(0)
         if tensor.ndim == 3 and tensor.shape[0] not in {1, 3}:
@@ -324,5 +464,3 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
             values[row_index, :length] = torch.tensor(sequence, dtype=torch.long)
             mask[row_index, :length] = True
         return values, mask
-
-

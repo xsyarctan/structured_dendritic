@@ -12,7 +12,7 @@ eval_fraction: 1.0
 max_train_examples: null
 max_eval_examples: null
 split_seed: 1111
-label_field: label
+label_field: Target
 loader:
   batch_size: 32
   eval_batch_size: 64
@@ -24,18 +24,18 @@ splits:
 source:
   path: csv
   data_files:
-    train: ${paths.data_root}/listops/train.tsv
-    validation: ${paths.data_root}/listops/val.tsv
-    test: ${paths.data_root}/listops/test.tsv
+    train: ${paths.data_root}/listops/basic_train.tsv
+    validation: ${paths.data_root}/listops/basic_val.tsv
+    test: ${paths.data_root}/listops/basic_test.tsv
   sep: "`t"
 text:
-  primary_field: text
+  primary_field: Source
   secondary_field: null
 image:
   field: image
   channels: 1
 tokenizer:
-  type: whitespace
+  type: listops
   name_or_path: null
   min_frequency: 1
   lowercase: false

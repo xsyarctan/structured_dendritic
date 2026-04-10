@@ -10,7 +10,7 @@ from structured_dendrite.models.dendrites.optim import build_optim_settings, mar
 
 try:
     from fla.ops.gla import fused_chunk_gla, fused_recurrent_gla
-except ImportError:
+except Exception:
     fused_chunk_gla = None
     fused_recurrent_gla = None
 

@@ -22,8 +22,14 @@ splits:
   validation: validation
   test: test
 source:
-  path: imagefolder
+  path: pathfinder_metadata
   data_dir: ${paths.data_root}/pathfinder
+  resolution: 32
+  difficulty_levels:
+    - curv_contour_length_14
+  val_split: 0.1
+  test_split: 0.1
+  seed: 42
 text:
   primary_field: text
   secondary_field: null

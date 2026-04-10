@@ -1,7 +1,7 @@
 task_name: classification
 input_kind: pair_text
 num_classes: 2
-max_length: 4096
+max_length: 4000
 train_max_length: null
 eval_max_length: null
 lm_stride: null
@@ -24,10 +24,16 @@ splits:
 source:
   path: csv
   data_files:
-    train: ${paths.data_root}/aan/train.tsv
-    validation: ${paths.data_root}/aan/val.tsv
-    test: ${paths.data_root}/aan/test.tsv
+    train: ${paths.data_root}/aan/new_aan_pairs.train.tsv
+    validation: ${paths.data_root}/aan/new_aan_pairs.eval.tsv
+    test: ${paths.data_root}/aan/new_aan_pairs.test.tsv
   sep: "`t"
+  column_names:
+    - label
+    - input1_id
+    - input2_id
+    - text1
+    - text2
 text:
   primary_field: text1
   secondary_field: text2
@@ -35,9 +41,9 @@ image:
   field: image
   channels: 1
 tokenizer:
-  type: wordpunct
+  type: char
   name_or_path: null
-  min_frequency: 2
-  lowercase: true
+  min_frequency: 1
+  lowercase: false
   add_bos: false
   add_eos: true

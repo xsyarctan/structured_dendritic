@@ -19,9 +19,9 @@ dependencies = [
   # On the user's Windows + Python 3.11 machine, install the exact CUDA build we smoke-tested.
   "torch @ https://download.pytorch.org/whl/cu130/torch-2.10.0%2Bcu130-cp311-cp311-win_amd64.whl ; platform_system == 'Windows' and platform_machine == 'AMD64' and python_version == '3.11'",
   "torchvision @ https://download.pytorch.org/whl/cu130/torchvision-0.25.0%2Bcu130-cp311-cp311-win_amd64.whl ; platform_system == 'Windows' and platform_machine == 'AMD64' and python_version == '3.11'",
-  # On a typical remote Linux x86_64 + Python 3.11 server, install the matching exact CUDA build too.
-  "torch @ https://download.pytorch.org/whl/cu130/torch-2.10.0%2Bcu130-cp311-cp311-manylinux_2_28_x86_64.whl ; platform_system == 'Linux' and platform_machine == 'x86_64' and python_version == '3.11'",
-  "torchvision @ https://download.pytorch.org/whl/cu130/torchvision-0.25.0%2Bcu130-cp311-cp311-manylinux_2_28_x86_64.whl ; platform_system == 'Linux' and platform_machine == 'x86_64' and python_version == '3.11'",
+  # On the current remote Linux x86_64 + Python 3.11 server, use CUDA 12.4 wheels that match the NVIDIA 550.x driver.
+  "torch @ https://download.pytorch.org/whl/cu124/torch-2.6.0%2Bcu124-cp311-cp311-linux_x86_64.whl ; platform_system == 'Linux' and platform_machine == 'x86_64' and python_version == '3.11'",
+  "torchvision @ https://download.pytorch.org/whl/cu124/torchvision-0.21.0%2Bcu124-cp311-cp311-linux_x86_64.whl ; platform_system == 'Linux' and platform_machine == 'x86_64' and python_version == '3.11'",
   # Fallback for other platforms, Python versions, or custom CUDA installs.
   "torch>=2.10,<2.11 ; (platform_system != 'Windows' or platform_machine != 'AMD64' or python_version != '3.11') and (platform_system != 'Linux' or platform_machine != 'x86_64' or python_version != '3.11')",
   "torchvision>=0.25,<0.26 ; (platform_system != 'Windows' or platform_machine != 'AMD64' or python_version != '3.11') and (platform_system != 'Linux' or platform_machine != 'x86_64' or python_version != '3.11')",

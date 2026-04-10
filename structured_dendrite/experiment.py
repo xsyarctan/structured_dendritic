@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import math
 from collections import defaultdict
 
@@ -63,6 +65,7 @@ class DendriteExperiment(L.LightningModule):
         self.train_accuracy = None
         self.val_accuracy = None
         self.test_accuracy = None
+        self._fit_start_time = None
 
     def setup(self, stage: str | None = None) -> None:
         if self.model is not None:
@@ -81,6 +84,38 @@ class DendriteExperiment(L.LightningModule):
 
     def forward(self, batch):
         return self.model(batch)
+
+    def on_fit_start(self) -> None:
+        self._fit_start_time = time.perf_counter()
+        if self.logger is None or self.model is None:
+            return
+
+        total_params = float(sum(parameter.numel() for parameter in self.model.parameters()))
+        trainable_params = float(sum(parameter.numel() for parameter in self.model.parameters() if parameter.requires_grad))
+        self.logger.log_metrics({
+            "meta/param_count": total_params,
+            "meta/trainable_param_count": trainable_params,
+        }, step=0)
+
+        hparams = {
+            "run_name": self.cfg.run.name,
+            "task_name": self.cfg.data.task_name,
+            "monitor_metric": self.cfg.task.monitor_metric,
+        }
+        if self.device.type == "cuda":
+            hparams["gpu_name"] = torch.cuda.get_device_name(self.device)
+        self.logger.log_hyperparams(hparams)
+
+    def on_fit_end(self) -> None:
+        if self.logger is None:
+            return
+        if self._fit_start_time is not None:
+            self.logger.log_metrics({"meta/fit_wall_clock_sec": time.perf_counter() - self._fit_start_time}, step=int(self.global_step))
+
+        checkpoint_callback = getattr(self.trainer, "checkpoint_callback", None)
+        if checkpoint_callback is not None and checkpoint_callback.best_model_score is not None:
+            metric_name = f"best/{self.cfg.task.monitor_metric.replace('/', '_')}"
+            self.logger.log_metrics({metric_name: float(checkpoint_callback.best_model_score)}, step=int(self.global_step))
 
     def training_step(self, batch, batch_idx):
         del batch_idx

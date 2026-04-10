@@ -17,6 +17,11 @@ def _normalize(text: str, lowercase: bool) -> str:
     return text.lower() if lowercase else text
 
 
+def _listops_tokenize(text: str) -> list[str]:
+    normalized = text.translate({ord("]"): ord("X"), ord("("): None, ord(")"): None})
+    return normalized.split()
+
+
 def basic_tokenize(text: str, mode: str, lowercase: bool = False) -> list[str]:
     text = _normalize(text, lowercase)
     if mode == "char":
@@ -25,6 +30,8 @@ def basic_tokenize(text: str, mode: str, lowercase: bool = False) -> list[str]:
         return text.split()
     if mode == "wordpunct":
         return re.findall(r"\w+|[^\w\s]", text)
+    if mode == "listops":
+        return _listops_tokenize(text)
     raise ValueError(f"Unsupported tokenization mode: {mode}")
 
 

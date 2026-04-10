@@ -279,8 +279,10 @@ Current folders:
 - `liq_ssm/`: main spiking SSM runs across tasks.
 - `dend_ablation_parameter/`: main complexity story comparing soma-only, fully frozen SSM dendrites, and trainable causal SSM dendrites.
 - dend_ablation_structure/: compares soma, SSM, Conv1D, and GLA structures.
-- eviewer_controls/: static pointwise controls that test whether gains come from temporal structure rather than extra preprocessing.
-- eviewer_claims/: low-data, short-budget, and length-generalization presets for stronger inductive-bias checks.
+- 
+eviewer_controls/: static pointwise controls that test whether gains come from temporal structure rather than extra preprocessing.
+- 
+eviewer_claims/: low-data, short-budget, and length-generalization presets for stronger inductive-bias checks.
 - ppendix/: optional noncausal upper-bound runs such as bidirectional SSM.
 - `s4_debug/`: standard non-spiking S4D baselines for sanity-checking the full training setup against the official S4 family.
 
@@ -414,13 +416,16 @@ If your immediate goal is sanity checking the implementation:
 
 ## Notes About Local Data
 
-A few configs intentionally assume local exports for tasks like AAN or ListOps because dataset packaging differs across setups.
+The configs used for the main LRA runs are aligned with the local layouts used by the official S4 repository.
 
 Expected local layouts:
 
-- `data/listops/train.tsv`, `val.tsv`, `test.tsv` with `text` and `label` columns.
-- `data/aan/train.tsv`, `val.tsv`, `test.tsv` with `text1`, `text2`, and `label` columns.
-- `data/pathfinder/train/...`, `validation/...`, `test/...` in `imagefolder` layout.
+- `data/listops/basic_train.tsv`, `basic_val.tsv`, `basic_test.tsv` with `Source` and `Target` columns.
+- `data/aan/new_aan_pairs.train.tsv`, `new_aan_pairs.eval.tsv`, `new_aan_pairs.test.tsv` as the headerless 5-column LRA export (`label`, `input1_id`, `input2_id`, `text1`, `text2`).
+- `data/pathfinder/curv_contour_length_14/...` in the original metadata layout used by LRA. The repo now also accepts `data/pathfinder/pathfinder32/...` if the 32x32 release is nested one directory deeper, and it builds the train/validation/test split deterministically from metadata.
+- `data/imdb/aclImdb/...` is used as a local fallback for the LRA Text task when Hugging Face is unavailable on the server.
+
+The current `liq_ssm/*` presets assume the S4-style ListOps, AAN, and Pathfinder layouts above, and `pathfinder_rs` specifically targets the 32x32 release with the `curv_contour_length_14` subset.
 
 ## Package Baseline
 
