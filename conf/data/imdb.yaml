@@ -11,7 +11,7 @@ train_fraction: 1.0
 eval_fraction: 1.0
 max_train_examples: null
 max_eval_examples: null
-split_seed: 1111
+split_seed: 42
 label_field: label
 loader:
   batch_size: 8
@@ -34,7 +34,7 @@ image:
 tokenizer:
   type: char
   name_or_path: null
-  min_frequency: 1
+  min_frequency: 15
   lowercase: false
   add_bos: false
   add_eos: true

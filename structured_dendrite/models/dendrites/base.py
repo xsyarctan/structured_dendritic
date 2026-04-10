@@ -25,7 +25,7 @@ class PointwiseMLPDendrite(nn.Module):
     def __init__(self, d_model: int, cfg) -> None:
         super().__init__()
         hidden_multiplier = float(cfg_value(cfg, "mlp_hidden_multiplier", 2.0))
-        hidden_dim = max(d_model, int(round(d_model * hidden_multiplier)))
+        hidden_dim = max(1, int(round(d_model * hidden_multiplier)))
         bias = bool(cfg_value(cfg, "mlp_bias", True))
 
         freeze_all = bool(cfg_value(cfg, "freeze_all", False))

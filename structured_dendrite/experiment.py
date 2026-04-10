@@ -132,6 +132,7 @@ class DendriteExperiment(L.LightningModule):
     def _shared_step(self, batch, stage: str):
         outputs = self.model(batch)
         spike_rate = outputs["spike_rate"]
+        sync_dist = bool(getattr(self.trainer, "world_size", 1) > 1)
 
         if self.cfg.task.name == "classification":
             logits = outputs["logits"]
@@ -146,8 +147,15 @@ class DendriteExperiment(L.LightningModule):
             }[stage]
             accuracy = metric(predictions, labels)
 
-            self.log(f"{stage}/loss", loss, prog_bar=stage != "train", on_step=stage == "train", on_epoch=True)
-            self.log(f"{stage}/accuracy", accuracy, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(
+                f"{stage}/loss",
+                loss,
+                prog_bar=stage != "train",
+                on_step=stage == "train",
+                on_epoch=True,
+                sync_dist=sync_dist,
+            )
+            self.log(f"{stage}/accuracy", accuracy, prog_bar=True, on_step=False, on_epoch=True, sync_dist=sync_dist)
         else:
             logits = outputs["logits"]
             labels = batch["labels"]
@@ -157,10 +165,17 @@ class DendriteExperiment(L.LightningModule):
                 ignore_index=int(self.trainer.datamodule.info.pad_token_id or 0),
             )
             perplexity = torch.exp(loss.detach())
-            self.log(f"{stage}/loss", loss, prog_bar=stage != "train", on_step=stage == "train", on_epoch=True)
-            self.log(f"{stage}/perplexity", perplexity, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(
+                f"{stage}/loss",
+                loss,
+                prog_bar=stage != "train",
+                on_step=stage == "train",
+                on_epoch=True,
+                sync_dist=sync_dist,
+            )
+            self.log(f"{stage}/perplexity", perplexity, prog_bar=True, on_step=False, on_epoch=True, sync_dist=sync_dist)
 
-        self.log(f"{stage}/spike_rate", spike_rate, prog_bar=False, on_step=stage == "train", on_epoch=True)
+        self.log(f"{stage}/spike_rate", spike_rate, prog_bar=False, on_step=stage == "train", on_epoch=True, sync_dist=sync_dist)
         return loss
 
     def configure_optimizers(self):
