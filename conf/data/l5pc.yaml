@@ -1,0 +1,24 @@
+task_name: l5pc_emulation
+input_kind: l5pc
+input_channels: 1278
+total_length: 6000
+train_crop_length: ${task.evaluation.window_length}
+train_repeats: 20
+train_fraction: 1.0
+eval_fraction: 1.0
+max_train_examples: null
+max_eval_examples: null
+split_seed: 1111
+loader:
+  batch_size: 128
+  eval_batch_size: 128
+  num_workers: 4
+voltage:
+  clip_above: -55.0
+  offset: -67.6
+source:
+  root: ${oc.env:L5PC_ROOT,${hydra:runtime.cwd}/neuron_as_deep_net-master}
+  validation_source: test
+  train_groups: null
+  validation_groups: null
+  test_groups: [erg]

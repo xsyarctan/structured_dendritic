@@ -5,7 +5,7 @@ from lightning import seed_everything
 from omegaconf import DictConfig, OmegaConf
 
 from structured_dendrite.data import FlexibleSequenceDataModule
-from structured_dendrite.experiment import DendriteExperiment, run_experiment
+from structured_dendrite.experiment import build_experiment, run_experiment
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -14,7 +14,7 @@ def main(cfg: DictConfig) -> None:
     seed_everything(cfg.run.seed, workers=True)
 
     datamodule = FlexibleSequenceDataModule(cfg.data)
-    module = DendriteExperiment(cfg)
+    module = build_experiment(cfg)
     run_experiment(cfg, module, datamodule)
 
 

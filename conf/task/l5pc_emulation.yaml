@@ -1,0 +1,16 @@
+name: l5pc_emulation
+monitor_metric: val/voltage_rmse
+monitor_mode: min
+loss:
+  voltage_weight_initial: 0.04
+  voltage_weight_decay: 0.95
+  spike_reweight_gamma: 2.0
+evaluation:
+  burn_in: 500
+  window_length: 1000
+  overlap: 350
+  low_fpr_threshold: 0.002
+  max_correlation_lag: 25
+  rescale_voltage_to_target_stats: true
+  save_prediction_dump: true
+  representative_index: 0

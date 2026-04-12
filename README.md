@@ -447,3 +447,95 @@ The project currently depends on:
 
 
 
+
+## L5PC Support
+
+The repo now includes an integrated L5PC biophysical neuron-emulation path that reads the legacy raw files under `neuron_as_deep_net-master/` directly through the shared Hydra + Lightning entrypoint.
+
+### What Was Added
+
+- Native L5PC dataset preprocessing and caching inside `structured_dendrite/data/l5pc.py`.
+- A dedicated `l5pc_emulation` task with the legacy random-crop training objective and sliding-window full-trace reconstruction at evaluation time.
+- Built-in model presets for:
+  - `experiment=l5pc/cnn7`
+  - `experiment=l5pc/factorized_1layer`
+  - `experiment=l5pc/factorized_2layer`
+  - `experiment=l5pc/matched_residual_s4d`
+  - optional controls: `experiment=l5pc/pointwise_control`, `experiment=l5pc/soma_only`
+- Prediction dumps plus a draft plotting script for paper figures.
+
+### Data Location
+
+By default the L5PC configs look for raw data in:
+
+```powershell
+${hydra:runtime.cwd}\neuron_as_deep_net-master
+```
+
+You can override that with:
+
+```powershell
+$env:L5PC_ROOT = "D:\path\to\neuron_as_deep_net-master"
+```
+
+The preprocessing cache is created automatically beside the raw data as `train_data_processed/` and `test_erg_processed/`.
+
+### Running L5PC Experiments
+
+CNN baseline:
+
+```powershell
+conda run -n structured-dendrite python train.py experiment=l5pc/cnn7
+```
+
+One-layer factorized model:
+
+```powershell
+conda run -n structured-dendrite python train.py experiment=l5pc/factorized_1layer
+```
+
+Two-layer factorized model:
+
+```powershell
+conda run -n structured-dendrite python train.py experiment=l5pc/factorized_2layer
+```
+
+Optional matched generic temporal baseline:
+
+```powershell
+conda run -n structured-dendrite python train.py experiment=l5pc/matched_residual_s4d
+```
+
+Optional control runs:
+
+```powershell
+conda run -n structured-dendrite python train.py experiment=l5pc/pointwise_control
+conda run -n structured-dendrite python train.py experiment=l5pc/soma_only
+```
+
+### Multi-Seed Runs
+
+A helper runner is included for the paper sweep:
+
+```powershell
+conda run -n structured-dendrite python scripts/run_l5pc_suite.py --seeds 1111 2222 3333
+```
+
+### Outputs And Visualization
+
+Each L5PC test run writes:
+
+- `l5pc_predictions.npz`: full-trace voltage/spike predictions, ROC arrays, cross-correlation curve, and one representative sample.
+- `l5pc_summary.json`: paper-facing metrics and parameter count.
+
+You can build a draft figure from one or more run folders with:
+
+```powershell
+conda run -n structured-dendrite python scripts/plot_l5pc_figure.py outputs\...\run_a outputs\...\run_b --output outputs\l5pc_figure.png
+```
+
+### Important L5PC Notes
+
+- The integrated pipeline preserves the legacy training recipe: random trace crops for training, full-trace reconstruction for evaluation, 500 ms burn-in trimming, clipped voltage targets, and spike AUC measured from raw spike logits.
+- The old crop logic was brittle for windows longer than 400 ms. The integrated dataset fixes that by bounding crop starts with `total_length - crop_length`, which is important for the 1000 ms factorized runs.
+- The default config still uses the official ergodic test set for validation to match the legacy scripts. If you want stricter model selection, set `data.source.validation_source=train` and choose held-out training groups.

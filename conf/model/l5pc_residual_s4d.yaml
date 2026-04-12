@@ -1,0 +1,45 @@
+family: l5pc_sequence
+variant: residual
+d_model: 64
+n_layers: 2
+dropout: 0.1
+prenorm: true
+final_norm: true
+preprocess:
+  kind: exp_conv
+  kernel_size: 20
+  init_tau: 5.0
+  learnable_tau: true
+encoder:
+  dropout: 0.0
+heads:
+  dropout: 0.0
+  voltage_source: hidden
+  spike_source: hidden
+dendrite:
+  kind: s4d_standard
+  direction: causal
+  freeze_all: false
+  freeze_dynamics: false
+  freeze_processor: false
+  freeze_skip: false
+  d_state: 64
+  dt_min: 0.001
+  dt_max: 0.1
+  input_scale_init: 1.0
+  kernel_size: 5
+  groups: -1
+  bias: true
+  n_heads: 4
+  use_branch_mixer: true
+  branch_mixer_groups: 1
+  mixer_bias: true
+  mlp_hidden_multiplier: 2.0
+  gla_gate_normalizer: 16.0
+  optim:
+    dynamics_lr: 0.001
+    dynamics_weight_decay: 0.0
+    processor_lr: null
+    processor_weight_decay: null
+    skip_lr: null
+    skip_weight_decay: null

@@ -39,6 +39,9 @@ wandb/
 *.npy
 *.npz
 
+# temporary development
+/neuron_as_deep_net-master
+
 # Local datasets and smoke-test fixtures
 /data/
 

@@ -1,0 +1,46 @@
+# @package _global_
+
+defaults:
+  - override /task: l5pc_emulation
+  - override /data: l5pc
+  - override /model: l5pc_cnn7
+  - _self_
+
+run:
+  name: l5pc_cnn7
+
+optimizer:
+  lr: 0.01
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+
+scheduler:
+  warmup_steps: 0
+  total_steps: 0
+  min_lr_ratio: 0.001
+
+trainer:
+  accelerator: auto
+  devices: [0]
+  max_epochs: 30
+  precision: 32-true
+
+logging:
+  kind: tensorboard
+
+data:
+  loader:
+    batch_size: 128
+    eval_batch_size: 128
+    num_workers: 4
+
+model:
+  hidden_channels: 128
+
+task:
+  loss:
+    voltage_weight_initial: 0.02
+    voltage_weight_decay: 0.95
+  evaluation:
+    window_length: 400
+    overlap: 150

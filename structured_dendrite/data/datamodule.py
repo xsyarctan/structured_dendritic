@@ -10,9 +10,10 @@ import lightning as L
 import torch
 from datasets import Dataset, DatasetDict, Image as HFImage, load_dataset
 from omegaconf import OmegaConf
-from torch.utils.data import DataLoader, Dataset as TorchDataset
+from torch.utils.data import DataLoader, Dataset as TorchDataset, Subset
 from torchvision.transforms.functional import pil_to_tensor
 
+from structured_dendrite.data.l5pc import L5PCDataset, TEST_SPLIT, TRAIN_SPLIT, prepare_l5pc_cache
 from structured_dendrite.data.tokenization import build_tokenizer
 
 
@@ -79,6 +80,7 @@ class DatasetInfo:
     pad_token_id: int | None = None
     sequence_length: int | None = None
     image_channels: int | None = None
+    input_channels: int | None = None
     pair_inputs: bool = False
 
 
@@ -98,12 +100,22 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
         super().__init__()
         self.cfg = cfg
         self.tokenizer = None
+        input_kind = cfg.input_kind
+        if input_kind == "l5pc":
+            sequence_length = int(cfg.total_length)
+            image_channels = None
+            input_channels = int(cfg.input_channels)
+        else:
+            sequence_length = max(int(cfg.max_length), int(cfg_value(cfg, "eval_max_length", cfg.max_length)))
+            image_channels = cfg.image.channels if input_kind == "image_sequence" else None
+            input_channels = None
         self.info = DatasetInfo(
             task_name=cfg.task_name,
-            input_kind=cfg.input_kind,
-            sequence_length=max(int(cfg.max_length), int(cfg_value(cfg, "eval_max_length", cfg.max_length))),
-            image_channels=cfg.image.channels if cfg.input_kind == "image_sequence" else None,
-            pair_inputs=cfg.input_kind == "pair_text",
+            input_kind=input_kind,
+            sequence_length=sequence_length,
+            image_channels=image_channels,
+            input_channels=input_channels,
+            pair_inputs=input_kind == "pair_text",
         )
 
         self.train_dataset: TorchDataset | None = None
@@ -111,14 +123,21 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
         self.test_dataset: TorchDataset | None = None
 
     def prepare_data(self) -> None:
+        if self.cfg.input_kind == "l5pc":
+            prepare_l5pc_cache(self.cfg.source.root)
+            return
         self._load_raw_dataset()
 
     def setup(self, stage: str | None = None) -> None:
         if self.train_dataset is not None:
             return
 
-        raw_dataset = self._load_raw_dataset()
         input_kind = self.cfg.input_kind
+        if input_kind == "l5pc":
+            self._setup_l5pc_datasets()
+            return
+
+        raw_dataset = self._load_raw_dataset()
         if input_kind in {"text", "pair_text", "language_model"}:
             self._setup_tokenized_datasets(raw_dataset)
         elif input_kind == "image_sequence":
@@ -332,6 +351,67 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
         self.test_dataset = self._maybe_limit_split(raw_dataset[self.cfg.splits.test], stage_name="test")
         self.info.num_classes = self.cfg.num_classes
 
+    def _setup_l5pc_datasets(self) -> None:
+        root = Path(self.cfg.source.root)
+        clip_voltage_above = float(self.cfg.voltage.clip_above)
+        voltage_offset = float(self.cfg.voltage.offset)
+        train_groups = cfg_value(self.cfg, "source.train_groups", None)
+        validation_source = str(cfg_value(self.cfg, "source.validation_source", "test"))
+        validation_groups = cfg_value(self.cfg, "source.validation_groups", None)
+        test_groups = cfg_value(self.cfg, "source.test_groups", None)
+
+        self.train_dataset = L5PCDataset(
+            root=root,
+            split_source=TRAIN_SPLIT,
+            mode="train",
+            crop_length=int(self.cfg.train_crop_length),
+            train_repeats=int(self.cfg.train_repeats),
+            select_groups=train_groups,
+            clip_voltage_above=clip_voltage_above,
+            voltage_offset=voltage_offset,
+        )
+
+        if validation_source == "train":
+            self.val_dataset = L5PCDataset(
+                root=root,
+                split_source=TRAIN_SPLIT,
+                mode="eval",
+                crop_length=int(self.cfg.total_length),
+                train_repeats=int(self.cfg.train_repeats),
+                select_groups=validation_groups,
+                clip_voltage_above=clip_voltage_above,
+                voltage_offset=voltage_offset,
+            )
+        elif validation_source == "test":
+            self.val_dataset = L5PCDataset(
+                root=root,
+                split_source=TEST_SPLIT,
+                mode="eval",
+                crop_length=int(self.cfg.total_length),
+                train_repeats=int(self.cfg.train_repeats),
+                select_groups=validation_groups,
+                clip_voltage_above=clip_voltage_above,
+                voltage_offset=voltage_offset,
+            )
+        else:
+            raise ValueError(f"Unknown L5PC validation source: {validation_source}")
+
+        self.test_dataset = L5PCDataset(
+            root=root,
+            split_source=TEST_SPLIT,
+            mode="eval",
+            crop_length=int(self.cfg.total_length),
+            train_repeats=int(self.cfg.train_repeats),
+            select_groups=test_groups,
+            clip_voltage_above=clip_voltage_above,
+            voltage_offset=voltage_offset,
+        )
+
+        self.train_dataset = self._maybe_limit_torch_dataset(self.train_dataset, stage_name="train")
+        self.val_dataset = self._maybe_limit_torch_dataset(self.val_dataset, stage_name="validation")
+        self.test_dataset = self._maybe_limit_torch_dataset(self.test_dataset, stage_name="test")
+        self.info.input_channels = int(self.cfg.input_channels)
+
     def _maybe_limit_split(self, split, stage_name: str):
         fraction_key = "train_fraction" if stage_name == "train" else "eval_fraction"
         max_examples_key = "max_train_examples" if stage_name == "train" else "max_eval_examples"
@@ -347,6 +427,23 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
         if target_size >= len(split):
             return split
         return split.shuffle(seed=seed).select(range(target_size))
+
+    def _maybe_limit_torch_dataset(self, dataset: TorchDataset, stage_name: str) -> TorchDataset:
+        fraction_key = "train_fraction" if stage_name == "train" else "eval_fraction"
+        max_examples_key = "max_train_examples" if stage_name == "train" else "max_eval_examples"
+        fraction = float(cfg_value(self.cfg, fraction_key, 1.0))
+        max_examples = cfg_value(self.cfg, max_examples_key, None)
+        seed = int(cfg_value(self.cfg, "split_seed", 1111))
+
+        target_size = len(dataset)
+        if fraction < 1.0:
+            target_size = min(target_size, max(1, floor(len(dataset) * fraction)))
+        if max_examples is not None:
+            target_size = min(target_size, int(max_examples))
+        if target_size >= len(dataset):
+            return dataset
+        indices = torch.randperm(len(dataset), generator=torch.Generator().manual_seed(seed))[:target_size].tolist()
+        return Subset(dataset, indices)
 
     def _split_max_length(self, split_name: str) -> int:
         if split_name == "train":
@@ -406,6 +503,8 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
             return self._collate_lm(batch)
         if self.cfg.input_kind == "image_sequence":
             return self._collate_images(batch)
+        if self.cfg.input_kind == "l5pc":
+            return self._collate_l5pc(batch)
         raise ValueError(f"Unsupported input kind: {self.cfg.input_kind}")
 
     def _collate_text(self, batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
@@ -438,6 +537,16 @@ class FlexibleSequenceDataModule(L.LightningDataModule):
         stacked = torch.stack(images, dim=0)
         mask = torch.ones(stacked.shape[:2], dtype=torch.bool)
         return {"inputs": stacked, "attention_mask": mask, "labels": labels}
+
+    def _collate_l5pc(self, batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
+        return {
+            "inputs": torch.stack([item["inputs"] for item in batch], dim=0),
+            "spike_targets": torch.stack([item["spike_targets"] for item in batch], dim=0),
+            "voltage_targets": torch.stack([item["voltage_targets"] for item in batch], dim=0),
+            "raw_voltage_targets": torch.stack([item["raw_voltage_targets"] for item in batch], dim=0),
+            "example_index": torch.stack([item["example_index"] for item in batch], dim=0),
+            "crop_start": torch.stack([item["crop_start"] for item in batch], dim=0),
+        }
 
     def _image_to_sequence(self, image) -> torch.Tensor:
         if hasattr(image, "convert"):

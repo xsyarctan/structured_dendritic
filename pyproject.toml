@@ -13,8 +13,12 @@ dependencies = [
   "einops>=0.8.0",
   "hydra-core>=1.3.2",
   "lightning>=2.4.0",
+  "matplotlib>=3.8.0",
+  "numpy>=1.26.0",
   "omegaconf>=2.3.0",
   "rich>=13.7.1",
+  "scikit-learn>=1.5.0",
+  "scipy>=1.13.0",
   "tensorboard>=2.19.0",
   # On the user's Windows + Python 3.11 machine, install the exact CUDA build we smoke-tested.
   "torch @ https://download.pytorch.org/whl/cu130/torch-2.10.0%2Bcu130-cp311-cp311-win_amd64.whl ; platform_system == 'Windows' and platform_machine == 'AMD64' and python_version == '3.11'",
